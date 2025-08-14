@@ -1,0 +1,443 @@
+package main
+
+import (
+	"bytes"
+	"crypto/tls"
+	"embed"
+	"fmt"
+	"html/template"
+	"io"
+	"log"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"usernet_api/manifest"
+)
+
+//go:embed static/*
+var staticFiles embed.FS
+
+var serviceURLs = []string{
+	"https://xomud.quest",
+}
+
+var manifestManager *manifest.ManifestManager
+
+func displaySplash() {
+	fmt.Print(`
+╔═════════════════════════════════════════════════════════════════════╗
+║                      USERNET API TERMINAL v1.0                      ║
+║                                                                     ║
+║     * . *  .  *       .    *    .     *   .    .  *    .   *   .    ║ 
+║  .    *     .'  *    .    .  *    .    *   .   *   .   *    .    *  ║
+║    .    * .'    .  *    .    *  .    .   *   .   *    .    *     .  ║
+║  *   .   /   .   *   .    *     .  *    .    *    .  *    .   *   . ║
+║    .  * /  *    .   *    .   *    .   *    .    *    .   *   .    * ║
+║  *   . /    .  *    .  *     .   *   .   *    .   *    .    *    .  ║
+║    .  *     *    .    *   .    *    .    *   .   *   .    *     .   ║
+║  *    .   *   .    *    .   *     .    *    .  *    .   *   .    *  ║
+║                       		THANK U			      ║
+╚═════════════════════════════════════════════════════════════════════╝
+`)
+}
+
+func terminalInterface() {
+	for {
+		fmt.Println("\nUSERNET API MANAGEMENT")
+		fmt.Println("1. List Service URLs")
+		fmt.Println("2. Add Service URL")
+		fmt.Println("3. Remove Service URL")
+		fmt.Println("4. Exit")
+		fmt.Print("\nSelect option: ")
+
+		var choice string
+		fmt.Scanln(&choice)
+
+		switch choice {
+		case "1":
+			fmt.Println("\nCurrent Service URLs:")
+			for i, url := range serviceURLs {
+				fmt.Printf("%d. %s\n", i+1, url)
+			}
+		case "2":
+			fmt.Print("Enter new service URL: ")
+			var newURL string
+			fmt.Scanln(&newURL)
+			serviceURLs = append(serviceURLs, newURL)
+			fmt.Println("URL added successfully")
+		case "3":
+			fmt.Print("Enter index to remove (1-", len(serviceURLs), "): ")
+			var index int
+			fmt.Scanln(&index)
+			if index > 0 && index <= len(serviceURLs) {
+				serviceURLs = append(serviceURLs[:index-1], serviceURLs[index:]...)
+				fmt.Println("URL removed successfully")
+			}
+		case "4":
+			return
+		default:
+			fmt.Println("Invalid option")
+		}
+	}
+}
+
+func seed(w http.ResponseWriter, r *http.Request) {
+
+	rootmap := []map[string]interface{}{
+		{"template_text": template.HTML(`
+		<center><i>u just made a root request to our usernet server api!</i></center>`)},
+	}
+
+	// Parse template from embedded filesystem
+	tmpl := template.Must(template.ParseFS(staticFiles, "static/index.html"))
+	tmpl.Execute(w, map[string]interface{}{"rootmap": rootmap})
+}
+
+func handleManifestRequest(w http.ResponseWriter, r *http.Request, parts []string) {
+	fmt.Printf("DEBUG: handleManifestRequest called with parts: %v, len: %d\n", parts, len(parts))
+
+	// Create request context
+	ctx := &manifest.RequestContext{
+		UserAgent:   r.UserAgent(),
+		AcceptTypes: r.Header["Accept"],
+		Headers:     r.Header,
+	}
+
+	// If no specific service is requested, return the api manifest
+	if len(parts) == 0 || parts[0] == "" {
+		fmt.Printf("DEBUG: No service specified, returning usernet_api manifest\n")
+		response, contentType, err := manifestManager.GetResponseForRequest("usernet_api", ctx)
+		if err != nil {
+			http.Error(w, "Error loading usernet_api manifest", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		if strResponse, ok := response.(string); ok {
+			w.Write([]byte(strResponse))
+		} else {
+			http.Error(w, "Invalid response type", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Handle service-specific manifest requests
+	serviceName := parts[0]
+	fmt.Printf("DEBUG: Service name from parts[0]: '%s'\n", serviceName)
+	response, contentType, err := manifestManager.GetResponseForRequest(serviceName, ctx)
+	if err != nil {
+		http.Error(w, "Error loading service manifest", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	if strResponse, ok := response.(string); ok {
+		w.Write([]byte(strResponse))
+	} else {
+		http.Error(w, "Invalid response type", http.StatusInternalServerError)
+	}
+}
+
+func enableCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		log.Printf("CORS request from origin: %s", "hidden")
+		if origin != "" && w.Header().Get("Access-Control-Allow-Origin") == "" {
+			// Set the Access-Control-Allow-Origin header to the request's origin
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+		w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "*")
+
+		// Log headers for debugging
+		log.Printf("Response Headers: %v", w.Header())
+
+		// Handle preflight requests
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type proxyResponse struct {
+	body       []byte
+	statusCode int
+	headers    http.Header
+	err        error
+}
+
+func forwardToAll(w http.ResponseWriter, r *http.Request) {
+	log.Printf("Received request to forward: %s %s", r.Method, r.URL.Path)
+
+	// Create a channel to receive responses
+	responses := make(chan proxyResponse, len(serviceURLs))
+
+	// Copy the request body for multiple reads
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("Error reading request body: %v", err)
+		http.Error(w, "Error reading request body", http.StatusInternalServerError)
+		return
+	}
+
+	// Launch a goroutine for each service URL
+	var wg sync.WaitGroup
+	for _, serviceURL := range serviceURLs {
+		wg.Add(1)
+		go func(sURL string) {
+			defer wg.Done()
+
+			// Create the target URL
+			targetURL := sURL + r.URL.Path
+			if r.URL.RawQuery != "" {
+				targetURL += "?" + r.URL.RawQuery
+			}
+
+			// Create the new request
+			proxyReq, err := http.NewRequest(r.Method, targetURL, bytes.NewReader(bodyBytes))
+			if err != nil {
+				log.Printf("Error creating request: %v", err)
+				responses <- proxyResponse{err: err}
+				return
+			}
+
+			// Create a robust client
+			client := &http.Client{
+				Transport: &http.Transport{
+					TLSClientConfig: &tls.Config{
+						ServerName:         strings.TrimPrefix(sURL, "https://"),
+						InsecureSkipVerify: true, // Trust the backend certificate
+					},
+					DisableKeepAlives:     true,
+					IdleConnTimeout:       5 * time.Second,
+					TLSHandshakeTimeout:   5 * time.Second,
+					ResponseHeaderTimeout: 5 * time.Second,
+				},
+				CheckRedirect: func(req *http.Request, via []*http.Request) error {
+					return http.ErrUseLastResponse
+				},
+				Timeout: 10 * time.Second,
+			}
+
+			// Preserve the original Host header from the client request
+			originalHost := r.Host
+			if originalHost == "" {
+				originalHost = r.Header.Get("Host")
+			}
+
+			// Set headers for the proxied request
+			proxyReq.Header = r.Header.Clone()
+			proxyReq.Host = strings.TrimPrefix(sURL, "https://")
+			proxyReq.Header.Set("X-Forwarded-Host", originalHost)
+			proxyReq.Header.Set("X-Real-IP", strings.Split(r.RemoteAddr, ":")[0])
+			proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
+			proxyReq.Header.Set("X-Forwarded-Proto", "https")
+
+			log.Printf("Forwarding request to: %s with Host: %s", targetURL, proxyReq.Host)
+
+			resp, err := client.Do(proxyReq)
+			if err != nil {
+				log.Printf("Error forwarding to %s: %v", sURL, err)
+				responses <- proxyResponse{err: err}
+				return
+			}
+			defer resp.Body.Close()
+
+			// Read the response body with timeout
+			bodyC := make(chan []byte, 1)
+			errC := make(chan error, 1)
+
+			go func() {
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					errC <- err
+					return
+				}
+				bodyC <- body
+			}()
+
+			// Wait for body read with timeout
+			select {
+			case body := <-bodyC:
+				responses <- proxyResponse{
+					body:       body,
+					statusCode: resp.StatusCode,
+					headers:    resp.Header,
+					err:        nil,
+				}
+			case err := <-errC:
+				log.Printf("Error reading response from %s: %v", sURL, err)
+				responses <- proxyResponse{err: err}
+			case <-time.After(5 * time.Second):
+				log.Printf("Timeout reading response from %s", sURL)
+				responses <- proxyResponse{err: fmt.Errorf("response read timeout")}
+			}
+		}(serviceURL)
+	}
+
+	// Close responses channel after all goroutines complete
+	go func() {
+		wg.Wait()
+		close(responses)
+	}()
+
+	// Return the first successful response
+	var lastErr error
+	for resp := range responses {
+		if resp.err != nil {
+			lastErr = resp.err
+			log.Printf("Proxy error: %v", resp.err)
+			continue
+		}
+
+		// Don't forward internal server errors
+		if resp.statusCode >= 500 {
+			lastErr = fmt.Errorf("upstream server error: %d", resp.statusCode)
+			continue
+		}
+
+		// Copy headers
+		for k, v := range resp.headers {
+			w.Header()[k] = v
+		}
+
+		// Set status code and write body
+		w.WriteHeader(resp.statusCode)
+		w.Write(resp.body)
+		return
+	}
+
+	// If we get here, all proxies failed
+	if lastErr != nil {
+		log.Printf("All proxies failed, last error: %v", lastErr)
+	}
+	http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+}
+
+func main() {
+	displaySplash()
+	go terminalInterface()
+
+	// Initialize manifest manager
+	manifestManager = manifest.NewManifestManager("manifest")
+
+	mux := http.NewServeMux()
+
+	// Static file handler
+	mux.HandleFunc("/.well-known/static/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/.well-known/static/")
+		content, err := staticFiles.ReadFile("static/" + path)
+		if err != nil {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+		if strings.HasSuffix(path, ".gif") {
+			w.Header().Set("Content-Type", "image/gif")
+		} else if strings.HasSuffix(path, ".html") {
+			w.Header().Set("Content-Type", "text/html")
+		}
+		w.Write(content)
+	})
+
+	// usernet namespace handler
+	mux.HandleFunc("/usernet/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/usernet/")
+		parts := strings.Split(path, "/")
+
+		if len(parts) == 0 {
+			http.Error(w, "Invalid usernet path", http.StatusBadRequest)
+			return
+		}
+
+		switch parts[0] {
+		case "manifest":
+			handleManifestRequest(w, r, parts[1:])
+		default:
+			http.Error(w, "Unknown usernet endpoint", http.StatusNotFound)
+		}
+	})
+
+	// Root handler - serves initial HTML
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Handle manifest requests
+		if strings.HasPrefix(r.URL.Path, "/usernet/manifest") {
+			// Extract the manifest name from the path
+			parts := strings.Split(r.URL.Path, "/")
+			if len(parts) < 4 {
+				http.Error(w, "Invalid manifest path", http.StatusBadRequest)
+				return
+			}
+
+			// Get the manifest name (e.g., "default_manifest" from /usernet/manifest/default_manifest)
+			manifestName := parts[3]
+			if manifestName == "" {
+				manifestName = "default_manifest"
+			}
+
+			log.Printf("Processing manifest request for: %s", manifestName)
+			log.Printf("Accept headers: %v", r.Header["Accept"])
+			log.Printf("User-Agent: %s", r.UserAgent())
+
+			// Create request context
+			ctx := &manifest.RequestContext{
+				UserAgent:   r.UserAgent(),
+				AcceptTypes: r.Header["Accept"],
+				Headers:     r.Header,
+			}
+
+			// Get the manifest response
+			log.Printf("Getting response from manifest manager")
+			response, contentType, err := manifestManager.GetResponseForRequest(manifestName, ctx)
+			if err != nil {
+				log.Printf("Error getting manifest response: %v", err)
+				http.Error(w, fmt.Sprintf("Error getting manifest response: %v", err), http.StatusInternalServerError)
+				return
+			}
+
+			log.Printf("Got response with content type: %s", contentType)
+
+			// Convert response to string
+			var responseStr string
+			if strResponse, ok := response.(string); ok {
+				responseStr = strResponse
+			} else {
+				log.Printf("Invalid response type: %T", response)
+				http.Error(w, "Invalid response type", http.StatusInternalServerError)
+				return
+			}
+
+			// Set appropriate content type based on the response type
+			if strings.Contains(r.Header.Get("Accept"), "text/html") {
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			} else if strings.Contains(r.Header.Get("Accept"), "application/json") {
+				w.Header().Set("Content-Type", "application/json")
+			} else {
+				w.Header().Set("Content-Type", "text/plain")
+			}
+
+			log.Printf("Sending response with length: %d", len(responseStr))
+			// Write the response
+			w.Write([]byte(responseStr))
+			return
+		}
+
+		// For root path, serve the seed template
+		seed(w, r)
+	})
+
+	handler := enableCORS(mux)
+
+	log.Println("Starting server on :8080")
+
+	server := &http.Server{
+		Addr:         ":8080",
+		Handler:      handler,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+
+	log.Fatal(server.ListenAndServe())
+}

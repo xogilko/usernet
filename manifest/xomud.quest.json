@@ -1,0 +1,94 @@
+{
+  "default_response": {
+    "name": "xomud.quest",
+    "version": "1.0",
+    "description": "Default service manifest for xomud.quest",
+    "services": [
+      {
+        "name": "Global Network",
+        "description": "Worldwide Reach",
+        "color": "rgb(0, 255, 255)",
+        "links": [
+          {"name": "Global Link 1", "url": "https://xomud.quest/global/1"},
+          {"name": "Global Link 2", "url": "https://xomud.quest/global/2"}
+        ]
+      },
+      {
+        "name": "Regional Network",
+        "description": "North America",
+        "color": "rgb(0, 200, 255)",
+        "links": [
+          {"name": "Regional Link 1", "url": "https://xomud.quest/regional/1"},
+          {"name": "Regional Link 2", "url": "https://xomud.quest/regional/2"}
+        ]
+      }
+    ],
+    "capabilities": [
+      "Web content delivery",
+      "API endpoints",
+      "Static file serving",
+      "Country-specific routing"
+    ]
+  },
+  "user_agent_cases": {
+    "Edg/": {
+      "name": "xomud.quest Edge Experience",
+      "version": "1.0",
+      "description": "Specialized content for Microsoft Edge browsers",
+      "features": [
+        "Edge-specific optimizations",
+        "Native Edge integrations",
+        "Enhanced performance"
+      ],
+      "endpoints": {
+        "main": "/edge",
+        "api": "/edge/api",
+        "static": "/edge/static"
+      }
+    }
+  },
+  "country_cases": {
+    "US": {
+      "name": "xomud.quest US Experience",
+      "version": "1.0",
+      "description": "US-specific content and services",
+      "services": [
+        {
+          "name": "US Network",
+          "description": "United States Coverage",
+          "color": "rgb(0, 100, 255)",
+          "links": [
+            {"name": "US Link 1", "url": "https://xomud.quest/us/1"},
+            {"name": "US Link 2", "url": "https://xomud.quest/us/2"}
+          ]
+        }
+      ]
+    },
+    "CA": {
+      "name": "xomud.quest Canada Experience",
+      "version": "1.0",
+      "description": "Canada-specific content and services",
+      "services": [
+        {
+          "name": "Canada Network",
+          "description": "Canadian Coverage",
+          "color": "rgb(0, 150, 255)",
+          "links": [
+            {"name": "Canada Link 1", "url": "https://xomud.quest/ca/1"},
+            {"name": "Canada Link 2", "url": "https://xomud.quest/ca/2"}
+          ]
+        }
+      ]
+    }
+  },
+  "templates": [
+    {
+      "content_type": "text/html",
+      "template_file": "xomud.quest.horizon.html"
+    },
+    {
+      "content_type": "text/plain",
+      "template_file": "xomud.quest.plain.txt"
+    }
+  ]
+} 
