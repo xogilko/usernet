@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"usernet_api/manifest"
+	"hypernet_api/manifest"
 )
 
 //go:embed static/*
@@ -28,7 +28,7 @@ var manifestManager *manifest.ManifestManager
 func displaySplash() {
 	fmt.Print(`
 ╔═════════════════════════════════════════════════════════════════════╗
-║                      USERNET API TERMINAL v1.0                      ║
+║                      HYPERNET API TERMINAL v1.0                     ║
 ║                                                                     ║
 ║     * . *  .  *       .    *    .     *   .    .  *    .   *   .    ║ 
 ║  .    *     .'  *    .    .  *    .    *   .   *   .   *    .    *  ║
@@ -38,14 +38,13 @@ func displaySplash() {
 ║  *   . /    .  *    .  *     .   *   .   *    .   *    .    *    .  ║
 ║    .  *     *    .    *   .    *    .    *   .   *   .    *     .   ║
 ║  *    .   *   .    *    .   *     .    *    .  *    .   *   .    *  ║
-║                       		THANK U			      ║
 ╚═════════════════════════════════════════════════════════════════════╝
 `)
 }
 
 func terminalInterface() {
 	for {
-		fmt.Println("\nUSERNET API MANAGEMENT")
+		fmt.Println("\nHYPERNET API MANAGEMENT")
 		fmt.Println("1. List Service URLs")
 		fmt.Println("2. Add Service URL")
 		fmt.Println("3. Remove Service URL")
@@ -87,7 +86,7 @@ func seed(w http.ResponseWriter, r *http.Request) {
 
 	rootmap := []map[string]interface{}{
 		{"template_text": template.HTML(`
-		<center><i>u just made a root request to our usernet server api!</i></center>`)},
+		<center><i>u just made a root request to our hypernet server api!</i></center>`)},
 	}
 
 	// Parse template from embedded filesystem
@@ -107,10 +106,10 @@ func handleManifestRequest(w http.ResponseWriter, r *http.Request, parts []strin
 
 	// If no specific service is requested, return the api manifest
 	if len(parts) == 0 || parts[0] == "" {
-		fmt.Printf("DEBUG: No service specified, returning usernet_api manifest\n")
-		response, contentType, err := manifestManager.GetResponseForRequest("usernet_api", ctx)
+		fmt.Printf("DEBUG: No service specified, returning hypernet_api manifest\n")
+		response, contentType, err := manifestManager.GetResponseForRequest("hypernet_api", ctx)
 		if err != nil {
-			http.Error(w, "Error loading usernet_api manifest", http.StatusInternalServerError)
+			http.Error(w, "Error loading hypernet_api manifest", http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", contentType)
@@ -341,13 +340,13 @@ func main() {
 		w.Write(content)
 	})
 
-	// usernet namespace handler
-	mux.HandleFunc("/usernet/", func(w http.ResponseWriter, r *http.Request) {
-		path := strings.TrimPrefix(r.URL.Path, "/usernet/")
+	// hypernet namespace handler
+	mux.HandleFunc("/hypernet/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/hypernet/")
 		parts := strings.Split(path, "/")
 
 		if len(parts) == 0 {
-			http.Error(w, "Invalid usernet path", http.StatusBadRequest)
+			http.Error(w, "Invalid hypernet path", http.StatusBadRequest)
 			return
 		}
 
@@ -355,71 +354,17 @@ func main() {
 		case "manifest":
 			handleManifestRequest(w, r, parts[1:])
 		default:
-			http.Error(w, "Unknown usernet endpoint", http.StatusNotFound)
+			http.Error(w, "Unknown hypernet endpoint", http.StatusNotFound)
 		}
 	})
 
 	// Root handler - serves initial HTML
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Handle manifest requests
-		if strings.HasPrefix(r.URL.Path, "/usernet/manifest") {
-			// Extract the manifest name from the path
+		// Handle manifest requests by delegating to the dedicated function
+		if strings.HasPrefix(r.URL.Path, "/hypernet/manifest") {
 			parts := strings.Split(r.URL.Path, "/")
-			if len(parts) < 4 {
-				http.Error(w, "Invalid manifest path", http.StatusBadRequest)
-				return
-			}
-
-			// Get the manifest name (e.g., "default_manifest" from /usernet/manifest/default_manifest)
-			manifestName := parts[3]
-			if manifestName == "" {
-				manifestName = "default_manifest"
-			}
-
-			log.Printf("Processing manifest request for: %s", manifestName)
-			log.Printf("Accept headers: %v", r.Header["Accept"])
-			log.Printf("User-Agent: %s", r.UserAgent())
-
-			// Create request context
-			ctx := &manifest.RequestContext{
-				UserAgent:   r.UserAgent(),
-				AcceptTypes: r.Header["Accept"],
-				Headers:     r.Header,
-			}
-
-			// Get the manifest response
-			log.Printf("Getting response from manifest manager")
-			response, contentType, err := manifestManager.GetResponseForRequest(manifestName, ctx)
-			if err != nil {
-				log.Printf("Error getting manifest response: %v", err)
-				http.Error(w, fmt.Sprintf("Error getting manifest response: %v", err), http.StatusInternalServerError)
-				return
-			}
-
-			log.Printf("Got response with content type: %s", contentType)
-
-			// Convert response to string
-			var responseStr string
-			if strResponse, ok := response.(string); ok {
-				responseStr = strResponse
-			} else {
-				log.Printf("Invalid response type: %T", response)
-				http.Error(w, "Invalid response type", http.StatusInternalServerError)
-				return
-			}
-
-			// Set appropriate content type based on the response type
-			if strings.Contains(r.Header.Get("Accept"), "text/html") {
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			} else if strings.Contains(r.Header.Get("Accept"), "application/json") {
-				w.Header().Set("Content-Type", "application/json")
-			} else {
-				w.Header().Set("Content-Type", "text/plain")
-			}
-
-			log.Printf("Sending response with length: %d", len(responseStr))
-			// Write the response
-			w.Write([]byte(responseStr))
+			// Skip /hypernet/manifest to get the remaining parts
+			handleManifestRequest(w, r, parts[2:])
 			return
 		}
 

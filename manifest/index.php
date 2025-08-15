@@ -1,9 +1,9 @@
-<?php // USERNET.BLUE DISPATCHER
+<?php // HYPERNET.BLUE DISPATCHER
 session_start();
 
-// Function to proxy request to usernet.blue
-function target_usernet($path) {
-    $targetUrl = 'https://usernet.blue' . $path;
+// Function to proxy request to hypernet.blue
+function target_hypernet($path) {
+    $targetUrl = 'https://hypernet.blue' . $path;
     
     $ch = curl_init($targetUrl);
     
@@ -34,9 +34,9 @@ function target_usernet($path) {
     return [$response, $httpCode, $contentType];
 }
 
-// Handle all non-root paths by proxying to usernet.blue
+// Handle all non-root paths by proxying to hypernet.blue
 if ($_SERVER['REQUEST_URI'] !== '/') {
-    list($response, $httpCode, $contentType) = target_usernet($_SERVER['REQUEST_URI']);
+    list($response, $httpCode, $contentType) = target_hypernet($_SERVER['REQUEST_URI']);
     
     if ($response && $httpCode === 200) {
         if ($contentType) {
@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_URI'] !== '/') {
         echo $response;
     } else {
         http_response_code($httpCode ?: 500);
-        echo "Error proxying request to usernet.blue (HTTP $httpCode)";
+        echo "Error proxying request to hypernet.blue (HTTP $httpCode)";
     }
     exit;
 }
@@ -63,6 +63,6 @@ if ($_SERVER['REQUEST_URI'] !== '/') {
     <script src="test_62_navi_shell.js"></script>
 </head>
 <body>
-    <iframe title="horizon_manifest" src="/usernet/manifest" style="display: block; border: none; margin: 0; padding: 0; width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; overflow: auto; background: transparent;"></iframe>
+    <iframe title="horizon_manifest" src="/hypernet/manifest" style="display: block; border: none; margin: 0; padding: 0; width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; overflow: auto; background: transparent;"></iframe>
 </body>
 </html>
