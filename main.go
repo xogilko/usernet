@@ -25,6 +25,30 @@ var serviceURLs = []string{
 
 var manifestManager *manifest.ManifestManager
 
+// requestLogger middleware logs all incoming requests to the terminal
+func requestLogger(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Log the request details to terminal
+		timestamp := time.Now().Format("15:04:05")
+		fmt.Printf("[%s] 🔔 REQUEST RECEIVED: %s %s from %s\n",
+			timestamp, r.Method, r.URL.Path, r.RemoteAddr)
+
+		// Log additional request details
+		if r.UserAgent() != "" {
+			fmt.Printf("[%s] 📱 User-Agent: %s\n", timestamp, r.UserAgent())
+		}
+		if len(r.Header) > 0 {
+			fmt.Printf("[%s] 📋 Headers: %d headers received\n", timestamp, len(r.Header))
+		}
+
+		// Call the next handler
+		next.ServeHTTP(w, r)
+
+		// Log completion
+		fmt.Printf("[%s] ✅ Request completed: %s %s\n", timestamp, r.Method, r.URL.Path)
+	})
+}
+
 func displaySplash() {
 	fmt.Print(`
 ╔═════════════════════════════════════════════════════════════════════╗
@@ -83,6 +107,7 @@ func terminalInterface() {
 }
 
 func seed(w http.ResponseWriter, r *http.Request) {
+	fmt.Printf("🌱 Serving root page template\n")
 
 	rootmap := []map[string]interface{}{
 		{"template_text": template.HTML(`
@@ -95,7 +120,7 @@ func seed(w http.ResponseWriter, r *http.Request) {
 }
 
 func handleManifestRequest(w http.ResponseWriter, r *http.Request, parts []string) {
-	fmt.Printf("DEBUG: handleManifestRequest called with parts: %v, len: %d\n", parts, len(parts))
+	fmt.Printf("📋 MANIFEST REQUEST: parts=%v, len=%d\n", parts, len(parts))
 
 	// Create request context
 	ctx := &manifest.RequestContext{
@@ -106,16 +131,19 @@ func handleManifestRequest(w http.ResponseWriter, r *http.Request, parts []strin
 
 	// If no specific service is requested, return the api manifest
 	if len(parts) == 0 || parts[0] == "" {
-		fmt.Printf("DEBUG: No service specified, returning hypernet_api manifest\n")
+		fmt.Printf("🏠 Returning hypernet_api manifest\n")
 		response, contentType, err := manifestManager.GetResponseForRequest("hypernet_api", ctx)
 		if err != nil {
+			fmt.Printf("❌ Error loading hypernet_api manifest: %v\n", err)
 			http.Error(w, "Error loading hypernet_api manifest", http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", contentType)
 		if strResponse, ok := response.(string); ok {
 			w.Write([]byte(strResponse))
+			fmt.Printf("✅ hypernet_api manifest served successfully\n")
 		} else {
+			fmt.Printf("❌ Invalid response type for hypernet_api manifest\n")
 			http.Error(w, "Invalid response type", http.StatusInternalServerError)
 		}
 		return
@@ -123,16 +151,19 @@ func handleManifestRequest(w http.ResponseWriter, r *http.Request, parts []strin
 
 	// Handle service-specific manifest requests
 	serviceName := parts[0]
-	fmt.Printf("DEBUG: Service name from parts[0]: '%s'\n", serviceName)
+	fmt.Printf("🔧 Service manifest requested: '%s'\n", serviceName)
 	response, contentType, err := manifestManager.GetResponseForRequest(serviceName, ctx)
 	if err != nil {
+		fmt.Printf("❌ Error loading service manifest '%s': %v\n", serviceName, err)
 		http.Error(w, "Error loading service manifest", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
 	if strResponse, ok := response.(string); ok {
 		w.Write([]byte(strResponse))
+		fmt.Printf("✅ Service manifest '%s' served successfully\n", serviceName)
 	} else {
+		fmt.Printf("❌ Invalid response type for service manifest '%s'\n", serviceName)
 		http.Error(w, "Invalid response type", http.StatusInternalServerError)
 	}
 }
@@ -327,8 +358,11 @@ func main() {
 	// Static file handler
 	mux.HandleFunc("/.well-known/static/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/.well-known/static/")
+		fmt.Printf("📁 STATIC FILE REQUEST: %s\n", path)
+
 		content, err := staticFiles.ReadFile("static/" + path)
 		if err != nil {
+			fmt.Printf("❌ Static file not found: %s\n", path)
 			http.Error(w, "Not found", http.StatusNotFound)
 			return
 		}
@@ -338,14 +372,17 @@ func main() {
 			w.Header().Set("Content-Type", "text/html")
 		}
 		w.Write(content)
+		fmt.Printf("✅ Static file served: %s (%d bytes)\n", path, len(content))
 	})
 
 	// hypernet namespace handler
 	mux.HandleFunc("/hypernet/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/hypernet/")
 		parts := strings.Split(path, "/")
+		fmt.Printf("🌐 HYPERNET REQUEST: %s -> parts: %v\n", path, parts)
 
 		if len(parts) == 0 {
+			fmt.Printf("❌ Invalid hypernet path\n")
 			http.Error(w, "Invalid hypernet path", http.StatusBadRequest)
 			return
 		}
@@ -354,6 +391,7 @@ func main() {
 		case "manifest":
 			handleManifestRequest(w, r, parts[1:])
 		default:
+			fmt.Printf("❌ Unknown hypernet endpoint: %s\n", parts[0])
 			http.Error(w, "Unknown hypernet endpoint", http.StatusNotFound)
 		}
 	})
@@ -369,10 +407,16 @@ func main() {
 		}
 
 		// For root path, serve the seed template
+		if r.URL.Path == "/" {
+			fmt.Printf("🏠 ROOT REQUEST: serving main page\n")
+		} else {
+			fmt.Printf("🔍 UNKNOWN PATH: %s (falling back to root handler)\n", r.URL.Path)
+		}
 		seed(w, r)
 	})
 
-	handler := enableCORS(mux)
+	// Apply middleware in order: requestLogger -> enableCORS -> mux
+	handler := requestLogger(enableCORS(mux))
 
 	log.Println("Starting server on :8080")
 
