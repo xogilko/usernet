@@ -149,11 +149,31 @@ func main() {
 		w.Write(content)
 		fmt.Printf("✅ Static file served: %s (%d bytes)\n", path, len(content))
 	})
+	mux.HandleFunc("/usernet/", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/usernet/")
+		parts := strings.Split(path, "/")
+		fmt.Printf("🌐 USERNET REQUEST: %s -> parts: %v\n", path, parts)
+
+		if len(parts) == 0 {
+			fmt.Printf("❌ Invalid usernet path\n")
+			http.Error(w, "Invalid usernet path", http.StatusBadRequest)
+			return
+		}
+
+		switch parts[0] {
+		case "manifest":
+			handleManifestRequest(w, r, parts[1:])
+		default:
+			fmt.Printf("❌ Unknown usernet endpoint: %s\n", parts[0])
+			http.Error(w, "Unknown usernet endpoint", http.StatusNotFound)
+		}
+	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		//general request handling
-		parts := strings.Split(r.URL.Path, "/")
+		//	parts := strings.Split(r.URL.Path, "/")
 
-		handleManifestRequest(w, r, parts[1:])
+		//	handleManifestRequest(w, r, parts[1:])
+
 		//root request
 		seed, err := seed()
 		if err != nil {
