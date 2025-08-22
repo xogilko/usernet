@@ -1,0 +1,82 @@
+{
+  "default_response": {
+    "name": "default Horizon Manifest",
+    "version": "1.0",
+    "description": "A dynamic service manifest in Horizon format for usernet API",
+    "services": [
+      {
+        "name": "Global Network",
+        "description": "Worldwide Reach",
+        "color": "rgb(0, 255, 255)",
+        "links": [
+          {"name": "Global Link 1", "url": "#"},
+          {"name": "Global Link 2", "url": "#"},
+          {"name": "Global Link 3", "url": "#"}
+        ]
+      },
+      {
+        "name": "Regional Network",
+        "description": "North America",
+        "color": "rgb(0, 200, 255)",
+        "links": [
+          {"name": "Regional Link 1", "url": "#"},
+          {"name": "Regional Link 2", "url": "#"}
+        ]
+      },
+      {
+        "name": "National Network",
+        "description": "United States",
+        "color": "rgb(0, 100, 255)",
+        "links": [
+          {"name": "National Link 1", "url": "#"},
+          {"name": "National Link 2", "url": "#"}
+        ]
+      },
+      {
+        "name": "Local Network",
+        "description": "New York City",
+        "color": "rgba(0, 0, 255, 0.5)",
+        "links": [
+          {"name": "NYC Link 1", "url": "#"},
+          {"name": "NYC Link 2", "url": "#"}
+        ]
+      }
+    ],
+    "capabilities": [
+      "User-agent specific responses",
+      "Service manifest management",
+      "Dynamic content routing"
+    ]
+  },
+  "user_agent_cases": {
+    "PowerShell": {
+      "name": "Hypernet Gateway CLI",
+      "version": "1.0",
+      "description": "CLI interface for Hypernet Gateway",
+      "commands": [
+        "list-services",
+        "get-manifest",
+        "update-manifest"
+      ]
+    },
+    "Edge": {
+      "name": "Hypernet Gateway Edge",
+      "version": "1.0",
+      "description": "Edge-optimized interface",
+      "features": [
+        "Edge-specific optimizations",
+        "Enhanced performance"
+      ]
+    }
+  },
+  "templates": [
+    {
+      "content_type": "text/html",
+      "template_file": "_default.template.html"
+    },
+    {
+      "content_type": "text/plain",
+      "template_file": "_default.template.txt"
+    }
+  ]
+}

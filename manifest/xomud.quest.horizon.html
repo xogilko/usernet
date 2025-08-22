@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Horizon Interface</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+        }
+        .submenu {
+            display: none;
+            margin: 10px 0;
+        }
+        .submenu:target {
+            display: block;
+        }
+        .submenu:target ~ tr,
+        tr:has(.submenu:target) ~ tr,
+        tr:has(+ tr .submenu:target),
+        tr:has(~ tr .submenu:target) {
+            display: none !important;
+        }
+        tr:has(.submenu:target) {
+            display: table-row !important;
+        }
+        table {
+            border-collapse: collapse;
+        }
+        td {
+            padding: 5px 10px;
+        }
+        .inner-table {
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            width: 100%;
+        }
+        .inner-table td {
+            padding: 5px 10px;
+            text-align: left;
+        }
+        .inner-table td:first-child {
+            width: 100px;
+        }
+        table > tr > td {
+            padding: 2px 10px;
+        }
+        table > tr:not(:last-child) > td {
+            border-bottom: 1px solid #eee;
+        }
+        .hyperplane-row {
+            position: relative;
+        }
+        .hyperplane-container {
+            position: relative;
+            text-align: center;
+            padding: 10px 0;
+        }
+        .hyperplane-container hr {
+            position: absolute;
+            width: 120%;
+            left: -10%;
+            top: 50%;
+            margin: 0;
+            border: none;
+            border-top: 1px solid #ccc;
+        }
+        .hyperplane-gif {
+            position: relative;
+            background: white;
+            z-index: 1;
+        }
+        .hyperplane-label {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: white;
+            padding: 0 10px;
+            color: #888;
+            z-index: 1;
+            font-size: 0.9em;
+        }
+        .hyperplane-label.left {
+            right: calc(50% + 35px);
+        }
+        .hyperplane-label.right {
+            left: calc(50% + 35px);
+        }
+    </style>
+</head>
+<body>
+    <div id="content" style="display: grid; place-items: center; min-height: 100vh; margin: 0; overflow: hidden">
+        <center style="margin: 0; padding: 0;">
+            <div><br>
+                <div class="container" style="padding: 20px; text-align: center;">
+                    <table style="margin: 0 auto; border-collapse: collapse;">
+                        {{range .services}}
+                        <tr>
+                            <td>
+                                <a href="#{{.name | urlize}}" style="text-shadow: 2px 2px 4px {{.color}};"> &amp; {{.name}} - {{.description}}</a>
+                                <div id="{{.name | urlize}}" class="submenu">
+                                    <table class="inner-table">
+                                        <tr>
+                                            <td><a href="#" style="text-shadow: 2px 2px 4px {{.color}};">← Back</a></td>
+                                            <td></td>
+                                        </tr>
+                                        {{range .links}}
+                                        <tr>
+                                            <td>{{.name}}:</td>
+                                            <td><a href="{{.url}}" style="text-shadow: 2px 2px 4px {{.color}};">{{.name}}</a></td>
+                                        </tr>
+                                        {{end}}
+                                    </table>
+                                </div>
+                            </td>
+                        </tr>
+                        {{end}}
+                        <tr>
+                            <td class="hyperplane-row">
+                                <div class="hyperplane-container">
+                                    <hr>
+                                    <span class="hyperplane-label left">server side above</span>
+                                    <img width="48" height="48" src="horizon.gif" class="hyperplane-gif" alt="hyperplane">
+                                    <span class="hyperplane-label right">client side below</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </center>
+    </div>
+</body>
+</html> 

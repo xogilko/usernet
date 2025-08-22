@@ -1,0 +1,14 @@
+Hypernet Gateway Status
+-------------------
+Name: {{.name}}
+Version: {{.version}}
+Description: {{.description}}
+
+Services:
+{{range .services}}- {{.name}} ({{.description}})
+  {{range .links}}  * {{.name}}
+  {{end}}{{end}}
+
+Capabilities:
+{{range .capabilities}}- {{.}}
+{{end}} 

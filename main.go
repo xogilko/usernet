@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"usernet/manifest"
 )
 
 //go:embed static
 var staticFiles embed.FS
+var manifestManager *manifest.ManifestManager
 
 func displaySplash() {
 	fmt.Print(`
@@ -71,14 +73,63 @@ func enableCORS(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+func handleManifestRequest(w http.ResponseWriter, r *http.Request, parts []string) {
+	fmt.Printf("📋 MANIFEST REQUEST: parts=%v, len=%d\n", parts, len(parts))
 
-func seed(r *http.Request) ([]byte, error) {
+	// Create request context
+	ctx := &manifest.RequestContext{
+		UserAgent:   r.UserAgent(),
+		AcceptTypes: r.Header["Accept"],
+		Headers:     r.Header,
+	}
+
+	// If no specific service is requested, return the api manifest
+	if len(parts) == 0 || parts[0] == "" {
+		fmt.Printf("🏠 Returning _default manifest\n")
+		response, contentType, err := manifestManager.GetResponseForRequest("_default", ctx)
+		if err != nil {
+			fmt.Printf("❌ Error loading _default manifest: %v\n", err)
+			http.Error(w, "Error loading _default manifest", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		if strResponse, ok := response.(string); ok {
+			w.Write([]byte(strResponse))
+			fmt.Printf("✅ _default manifest served successfully\n")
+		} else {
+			fmt.Printf("❌ Invalid response type for _default manifest\n")
+			http.Error(w, "Invalid response type", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// Handle service-specific manifest requests
+	serviceName := parts[0]
+	fmt.Printf("🔧 Service manifest requested: '%s'\n", serviceName)
+	response, contentType, err := manifestManager.GetResponseForRequest(serviceName, ctx)
+	if err != nil {
+		fmt.Printf("❌ Error loading service manifest '%s': %v\n", serviceName, err)
+		http.Error(w, "Error loading service manifest", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	if strResponse, ok := response.(string); ok {
+		w.Write([]byte(strResponse))
+		fmt.Printf("✅ Service manifest '%s' served successfully\n", serviceName)
+	} else {
+		fmt.Printf("❌ Invalid response type for service manifest '%s'\n", serviceName)
+		http.Error(w, "Invalid response type", http.StatusInternalServerError)
+	}
+}
+func seed() ([]byte, error) {
+
 	return []byte("seeded"), nil
 }
 
 func main() {
 	displaySplash()
 	go terminalInterface()
+	manifestManager = manifest.NewManifestManager("manifest")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/static/", func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/.well-known/static/")
@@ -100,9 +151,11 @@ func main() {
 	})
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		//general request handling
+		parts := strings.Split(r.URL.Path, "/")
 
+		handleManifestRequest(w, r, parts[1:])
 		//root request
-		seed, err := seed(r)
+		seed, err := seed()
 		if err != nil {
 			fmt.Printf("failed to seed")
 			http.Error(w, "failed to seed", http.StatusNotFound)
